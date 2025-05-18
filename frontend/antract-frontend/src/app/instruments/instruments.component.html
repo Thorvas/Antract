@@ -1,0 +1,25 @@
+<div class="instruments-container">
+    <h1>Katalog instrumentów</h1>
+    
+    <div class="category-filter">
+        <select [(ngModel)]="currentCategory">
+            <option *ngFor="let category of categories" [value]="category">
+                {{category}}
+            </option>
+        </select>
+    </div>
+
+    <div class="instruments-grid">
+        <div class="instrument-card" *ngFor="let instrument of getInstrumentsByCategory()">
+            <div class="instrument-image">
+                <img [src]="instrument.imageUrl" [alt]="instrument.name">
+            </div>
+            <div class="instrument-info">
+                <h3>{{instrument.name}}</h3>
+                <p>{{instrument.description}}</p>
+                <p>Cena: {{instrument.price}} zł</p>
+                <button>Dodaj do koszyka</button>
+            </div>
+        </div>
+    </div>
+</div>
