@@ -12,8 +12,11 @@ export class IntervalCalculateService {
   private addInterval(start: Note, semitoneDistance: number, noteNumber: number) {
 
       const notes: string[] = ['C', "D", "E", "F", "G", "A", "H"];
-      const targetSemitone: number = (start.getSemitone(start.getLetter()) + start.getPitch() + semitoneDistance) % 12;
-      const targetNote: string = notes[(notes.indexOf(start.getLetter()) + noteNumber - 1) % notes.length];
+      const targetSemitone: number = (start.getSemitone(start.getLetter()) + start.getPitch() + semitoneDistance + 12) % 12;
+      const targetNote: string = notes[(notes.indexOf(start.getLetter()) + (noteNumber - Math.sign(noteNumber)) + notes.length) % notes.length];
+
+      console.log (`start: ${start.getLetter()}${start.getPitch()}, semitoneDistance: ${semitoneDistance}, noteNumber: ${noteNumber}`);
+      console.log(`targetSemitone: ${targetSemitone}, targetNote: ${targetNote}`);
 
       return new Note(targetSemitone - start.getSemitone(targetNote), targetNote);
   }
@@ -124,6 +127,10 @@ export class IntervalCalculateService {
 
   public calculatePerfectFifteenth(start: Note): Note {
       return this.addInterval(start, 24, 15);
+  }
+
+  public calculateKwintaDown(start: Note): Note {
+      return this.addInterval(start, 7, 5);
   }
 
 }

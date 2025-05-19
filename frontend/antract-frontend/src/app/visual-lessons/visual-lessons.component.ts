@@ -80,5 +80,9 @@ context.stroke();
 
     // Draw everything
     factory.draw();
+
+    const startNote: Note = new Note(1, 'D');
+
+    console.log(this.intervalCalculateService.calculateKwintaDown(startNote).toString());
   }
 }
