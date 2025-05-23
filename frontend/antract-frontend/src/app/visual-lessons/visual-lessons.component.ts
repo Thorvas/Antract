@@ -81,8 +81,12 @@ context.stroke();
     // Draw everything
     factory.draw();
 
-    const startNote: Note = new Note(1, 'D');
+    let startNote: Note = new Note(-1, 'E', 4);  
 
-    console.log(this.intervalCalculateService.calculateKwintaDown(startNote).toString());
-  }
+    for (let i = 0; i < 5; i++) {
+      startNote = startNote.calculateKwintaDown(startNote);
+      console.log(startNote.toString());
+    }
+
+}
 }
