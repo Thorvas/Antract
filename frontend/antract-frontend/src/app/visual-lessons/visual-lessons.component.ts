@@ -1,48 +1,29 @@
-  import { AfterViewInit, Component, ElementRef, OnInit, ViewChild } from '@angular/core';
-import { Factory, GhostNote, Renderer, Stave, StaveNote } from 'vexflow';
-import { IntervalCalculateService } from '../services/interval-calculate.service';
-import { Note } from '../services/Note';
-import { TetradCalculateService } from '../services/interval-calculate/tetrad-calculate.service';
-import { FifthCalculateService } from '../services/interval-calculate/fifth-calculate.service';
+import { AfterViewInit, Component, ElementRef, ViewChild } from '@angular/core';
 import { DrawService } from '../drawing/draw.service';
-
+import { Note } from '../services/Note';
 
 @Component({
   selector: 'app-visual-lessons',
-  imports: [],
   templateUrl: './visual-lessons.component.html',
   styleUrl: './visual-lessons.component.css'
 })
 export class VisualLessonsComponent implements AfterViewInit {
-  @ViewChild('staff2', { static: true }) staffDivTwo!: ElementRef;
   @ViewChild('staff', { static: true }) staffDiv!: ElementRef;
 
-  private renderer!: Renderer;
-  private stave!: Stave;
-  private factories!: Factory[];
-  private notes: StaveNote[] = [];
-  constructor(private fifthCalculateService: FifthCalculateService, private drawService: DrawService) {
-    this.drawService = drawService;
-    this.fifthCalculateService = fifthCalculateService;
-  }
+  constructor(private drawService: DrawService) {}
+
   ngAfterViewInit(): void {
     this.drawService.init(this.staffDiv);
-
-    let staveNote = new StaveNote({keys: ['c/5'], duration: 'w' });
-
     this.drawService.drawNotes([
-      new StaveNote({keys: ['c/4'], duration: 'w' }),
-      new StaveNote({keys: ['d/4'], duration: 'w' }),
-      new StaveNote({keys: ['e/4'], duration: 'w' }),
-      new StaveNote({keys: ['f/4'], duration: 'w' }),
-      new StaveNote({keys: ['g/4'], duration: 'w' }),
-      new StaveNote({keys: ['a/4'], duration: 'w' }),
-      new StaveNote({keys: ['b/4'], duration: 'w' }),
+      new Note(0, 'C', 4),
+      new Note(0, 'D', 4),
+      new Note(0, 'E', 4),
+      new Note(0, 'F', 4),
+      new Note(0, 'G', 4),
+      new Note(0, 'A', 4),
+      new Note(0, 'H', 4)
     ]);
-
-    this.drawService.drawClickPoints(this.staffDiv);
-  }
-
-  private initializeStaff() {
+    this.drawService.drawClickPoints();
   }
 }
+

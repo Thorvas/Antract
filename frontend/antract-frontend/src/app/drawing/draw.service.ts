@@ -1,114 +1,91 @@
 import { ElementRef, Injectable } from '@angular/core';
-import { Factory, Stave, StaveNote, StemmableNote, System, Voice } from 'vexflow';
 import { Note } from '../services/Note';
 
 @Injectable({
   providedIn: 'root'
 })
 export class DrawService {
+  private svg!: SVGSVGElement;
+  private notes: Note[] = [];
 
-  private factory!: Factory;
-  private system!: System;
-  private stave!: Stave;
-  private notes: StemmableNote[] = [];
-  private voice!: Voice;
-  private readonly DEFAULT_STAVE_WIDTH = 250;
-  private readonly POINT_START_X = 53.833;
+  private readonly width = 500;
+  private readonly height = 200;
+  private readonly staveLeft = 10;
+  private readonly staveTop = 40;
+  private readonly lineSpacing = 10;
+  private readonly noteSpacing = 40;
 
   constructor() {}
 
-  public init(elementRef: ElementRef) {
-
-    this.factory = new Factory({
-      renderer: {
-        elementId: elementRef.nativeElement,
-        width: 500,
-        height: 300
-      }
-    });
-    
-    this.system = this.factory.System({
-      x: 0,
-      y: 0,
-      width: this.DEFAULT_STAVE_WIDTH, // Match the renderer width
-      spaceBetweenStaves: 5
-    });
-
-    this.stave = this.factory.Stave({
-      x: 10,
-      y: 300,
-      width: this.DEFAULT_STAVE_WIDTH // Increased width for more note spacing
-    }).addClef('treble');
-
-    
-
-    this.voice = this.factory.Voice({
-      time: { numBeats: this.notes.length * 4, beatValue: 4 }
-    })
-
-    this.voice.setStrict(false);
+  public init(elementRef: ElementRef): void {
+    this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+    this.svg.setAttribute('width', `${this.width}`);
+    this.svg.setAttribute('height', `${this.height}`);
+    elementRef.nativeElement.innerHTML = '';
+    elementRef.nativeElement.appendChild(this.svg);
+    this.drawStaff();
   }
 
-  public addNote(note: StaveNote) {
+  public addNote(note: Note): void {
     this.notes.push(note);
     this.redraw();
   }
 
-   public drawNotes(notes: StemmableNote[]) {
+  public drawNotes(notes: Note[]): void {
     this.notes = notes;
     this.redraw();
-   }
-
-  private redraw() {
-    
-    this.voice.addTickables(this.notes);
-    console.log(this.voice.getTickables());
-
-    this.system.addStave({
-      stave: this.stave,
-      voices: [this.voice]
-    });
-
-
-    this.factory.draw();
   }
 
-  public drawClickPoints(elementRef: ElementRef) {
+  private redraw(): void {
+    this.svg.innerHTML = '';
+    this.drawStaff();
+    this.notes.forEach((note, index) => {
+      const x = this.staveLeft + index * this.noteSpacing + 20;
+      const y = this.getYForNote(note);
 
-    const svg: SVGSVGElement | null = elementRef.nativeElement.querySelector('svg');
+      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
+      circle.setAttribute('cx', String(x));
+      circle.setAttribute('cy', String(y));
+      circle.setAttribute('r', '5');
+      circle.setAttribute('fill', 'black');
+      this.svg.appendChild(circle);
+    });
+  }
 
-    const spacing = 0.16323 * this.DEFAULT_STAVE_WIDTH - 14.2109
-    console.log(`Spacing between points: ${spacing}`);
+  private drawStaff(): void {
+    for (let i = 0; i < 5; i++) {
+      const y = this.staveTop + i * this.lineSpacing;
+      const line = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      line.setAttribute('x1', String(this.staveLeft));
+      line.setAttribute('x2', String(this.width - this.staveLeft));
+      line.setAttribute('y1', String(y));
+      line.setAttribute('y2', String(y));
+      line.setAttribute('stroke', 'black');
+      this.svg.appendChild(line);
+    }
+  }
 
-    const svgDom = elementRef.nativeElement.querySelector('svg');
-    const groups = svgDom.querySelectorAll('g[id^="vf-"]');
-    
-    // Filtrowanie tylko tych grup, które mają klasę 'vf-stavenote'
-    const stavenoteGroups = Array.from(groups)
-      .filter((group): group is SVGGElement => group instanceof SVGGElement && group.classList.contains('vf-stavenote'));
+  private getYForNote(note: Note): number {
+    const stepMap: Record<string, number> = {
+      'C': 0,
+      'D': 1,
+      'E': 2,
+      'F': 3,
+      'G': 4,
+      'A': 5,
+      'H': 6
+    };
+    const stepsFromC4 = stepMap[note.getLetter()] + (note.getOctave() - 4) * 7;
+    return this.staveTop + 4 * this.lineSpacing - stepsFromC4 * (this.lineSpacing / 2);
+  }
 
-    stavenoteGroups.forEach((group: SVGGElement, i: number) => {
-      const bbox = group.getBBox();
-      console.log(`x: ${bbox.x}, y: ${bbox.y}, width: ${bbox.width}, height: ${bbox.height}`);
-      for (let j = 0; j < 8; j++) {
-      let yPosition = this.stave.getYForLine(j);
-      const xPosition = this.POINT_START_X + (i * spacing);
-
-      const rect = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
-
-      rect.setAttribute('x', xPosition.toString());
-      rect.setAttribute('y', yPosition.toString());
-      rect.setAttribute('width', '16.867');
-      rect.setAttribute('height', '10');
-      rect.setAttribute('opacity', '0');
-      rect.setAttribute('pointer-events', 'auto');
-
-      rect.addEventListener('click', () => {
-        console.log(`Kliknięto punkt #${i} na x=${xPosition}, y=${yPosition}`);
-        // tutaj Twoja logika po kliknięciu…
+  public drawClickPoints(): void {
+    const circles = this.svg.querySelectorAll('circle');
+    circles.forEach((circle, i) => {
+      circle.addEventListener('click', () => {
+        console.log(`Clicked note #${i}`);
       });
-      group.appendChild(rect);
-      }
     });
   }
 }
+
