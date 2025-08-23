@@ -39,16 +39,49 @@ export class DrawService {
   private redraw(): void {
     this.svg.innerHTML = '';
     this.drawStaff();
+    const middleY = this.staveTop + 2 * this.lineSpacing;
+
     this.notes.forEach((note, index) => {
       const x = this.staveLeft + index * this.noteSpacing + 20;
       const y = this.getYForNote(note);
 
-      const circle = document.createElementNS('http://www.w3.org/2000/svg', 'circle');
-      circle.setAttribute('cx', String(x));
-      circle.setAttribute('cy', String(y));
-      circle.setAttribute('r', '5');
-      circle.setAttribute('fill', 'black');
-      this.svg.appendChild(circle);
+      const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
+      group.setAttribute('cursor', 'pointer');
+
+      const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
+      ellipse.setAttribute('cx', String(x));
+      ellipse.setAttribute('cy', String(y));
+      ellipse.setAttribute('rx', '7');
+      ellipse.setAttribute('ry', '5');
+      ellipse.setAttribute('fill', 'black');
+      ellipse.setAttribute('transform', `rotate(-20 ${x} ${y})`);
+      group.appendChild(ellipse);
+
+      const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+      stem.setAttribute('stroke', 'black');
+      stem.setAttribute('stroke-width', '1');
+      if (y < middleY) {
+        // stem downwards on left side
+        stem.setAttribute('x1', String(x - 5));
+        stem.setAttribute('y1', String(y));
+        stem.setAttribute('x2', String(x - 5));
+        stem.setAttribute('y2', String(y + 35));
+      } else {
+        // stem upwards on right side
+        stem.setAttribute('x1', String(x + 5));
+        stem.setAttribute('y1', String(y));
+        stem.setAttribute('x2', String(x + 5));
+        stem.setAttribute('y2', String(y - 35));
+      }
+      group.appendChild(stem);
+
+      group.addEventListener('click', () => {
+        const current = ellipse.getAttribute('fill');
+        ellipse.setAttribute('fill', current === 'black' ? 'red' : 'black');
+        console.log(`Clicked ${note.getLetter()}${note.getOctave()}`);
+      });
+
+      this.svg.appendChild(group);
     });
   }
 
@@ -79,13 +112,5 @@ export class DrawService {
     return this.staveTop + 4 * this.lineSpacing - stepsFromC4 * (this.lineSpacing / 2);
   }
 
-  public drawClickPoints(): void {
-    const circles = this.svg.querySelectorAll('circle');
-    circles.forEach((circle, i) => {
-      circle.addEventListener('click', () => {
-        console.log(`Clicked note #${i}`);
-      });
-    });
-  }
 }
 

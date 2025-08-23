@@ -23,7 +23,6 @@ export class VisualLessonsComponent implements AfterViewInit {
       new Note(0, 'A', 4),
       new Note(0, 'H', 4)
     ]);
-    this.drawService.drawClickPoints();
   }
 }
 
