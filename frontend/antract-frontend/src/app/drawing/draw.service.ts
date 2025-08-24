@@ -71,6 +71,33 @@ export class DrawService {
       group.setAttribute('cursor', 'pointer');
 
       entries.forEach(({ entry, y }) => {
+        const top = this.staveTop;
+        const bottom = this.staveTop + 4 * this.lineSpacing;
+
+        const ledgerCountAbove = Math.max(0, Math.floor((top - y) / this.lineSpacing));
+        for (let i = 1; i <= ledgerCountAbove; i++) {
+          const ly = top - i * this.lineSpacing;
+          const ledger = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          ledger.setAttribute('x1', String(x - 12));
+          ledger.setAttribute('x2', String(x + 12));
+          ledger.setAttribute('y1', String(ly));
+          ledger.setAttribute('y2', String(ly));
+          ledger.setAttribute('stroke', 'black');
+          group.appendChild(ledger);
+        }
+
+        const ledgerCountBelow = Math.max(0, Math.floor((y - bottom) / this.lineSpacing));
+        for (let i = 1; i <= ledgerCountBelow; i++) {
+          const ly = bottom + i * this.lineSpacing;
+          const ledger = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+          ledger.setAttribute('x1', String(x - 12));
+          ledger.setAttribute('x2', String(x + 12));
+          ledger.setAttribute('y1', String(ly));
+          ledger.setAttribute('y2', String(ly));
+          ledger.setAttribute('stroke', 'black');
+          group.appendChild(ledger);
+        }
+
         const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
         ellipse.setAttribute('cx', String(x));
         ellipse.setAttribute('cy', String(y));
