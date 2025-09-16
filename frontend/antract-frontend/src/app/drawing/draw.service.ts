@@ -1,4 +1,5 @@
 import { ElementRef, Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 import { Note } from '../services/Note';
 
 @Injectable({
@@ -7,6 +8,10 @@ import { Note } from '../services/Note';
 export class DrawService {
   private svg!: SVGSVGElement;
   private notes: { note: Note; index: number }[] = [];
+  private selectedEntry: { note: Note; index: number } | null = null;
+  private readonly selectedNoteSubject = new BehaviorSubject<{ note: Note; index: number } | null>(null);
+
+  public readonly selectedNote$ = this.selectedNoteSubject.asObservable();
 
   private readonly width = 500;
   private readonly height = 200;
@@ -14,6 +19,7 @@ export class DrawService {
   private readonly staveTop = 40;
   private readonly lineSpacing = 10;
   private readonly noteSpacing = 40;
+  private readonly chordOffsetSpacing = 6;
 
   constructor() {}
 
@@ -29,12 +35,15 @@ export class DrawService {
   }
 
   public addNote(note: Note, index: number): void {
-    this.notes.push({ note, index });
+    const entry = { note, index };
+    this.notes.push(entry);
+    this.setSelectedEntry(entry, false);
     this.redraw();
   }
 
   public drawNotes(notes: Note[]): void {
     this.notes = notes.map((n, i) => ({ note: n, index: i }));
+    this.setSelectedEntry(null, false);
     this.redraw();
   }
 
@@ -47,11 +56,77 @@ export class DrawService {
     const y = event.clientY - rect.top;
     const index = Math.round((x - this.staveLeft) / this.noteSpacing);
     const note = this.getNoteFromY(y);
-    this.notes.push({ note, index });
+    const entry = { note, index };
+    this.notes.push(entry);
+    this.setSelectedEntry(entry, false);
     this.redraw();
   }
 
+  public clearSelection(): void {
+    if (!this.selectedEntry) {
+      return;
+    }
+    this.setSelectedEntry(null);
+  }
+
+  public deleteSelectedNote(): void {
+    if (!this.selectedEntry) {
+      return;
+    }
+    const idx = this.notes.indexOf(this.selectedEntry);
+    if (idx > -1) {
+      this.notes.splice(idx, 1);
+    }
+    this.setSelectedEntry(null, true);
+    this.redraw();
+  }
+
+  public transposeSelected(delta: number): void {
+    if (!this.selectedEntry || delta === 0) {
+      return;
+    }
+    this.selectedEntry.note.transposeSemitone(delta);
+    this.selectedNoteSubject.next({
+      note: this.selectedEntry.note,
+      index: this.selectedEntry.index
+    });
+    this.redraw();
+  }
+
+  private setSelectedEntry(
+    entry: { note: Note; index: number } | null,
+    skipRedraw = false
+  ): void {
+    this.selectedEntry = entry;
+    this.selectedNoteSubject.next(entry ? { note: entry.note, index: entry.index } : null);
+    if (!skipRedraw && this.svg) {
+      this.redraw();
+    }
+  }
+
+  private computeChordOffsets(count: number): number[] {
+    if (count <= 1) {
+      return [0];
+    }
+    const offsets: number[] = [];
+    let leftSteps = 0;
+    let rightSteps = 0;
+    for (let i = 0; i < count; i++) {
+      if (i % 2 === 0) {
+        leftSteps += 1;
+        offsets.push(-this.chordOffsetSpacing * leftSteps);
+      } else {
+        rightSteps += 1;
+        offsets.push(this.chordOffsetSpacing * rightSteps);
+      }
+    }
+    return offsets;
+  }
+
   private redraw(): void {
+    if (!this.svg) {
+      return;
+    }
     this.svg.innerHTML = '';
     this.drawStaff();
 
@@ -66,11 +141,21 @@ export class DrawService {
     const middleY = this.staveTop + 2 * this.lineSpacing;
 
     notesByIndex.forEach((entries, idx) => {
-      const x = this.staveLeft + idx * this.noteSpacing;
+      const baseX = this.staveLeft + idx * this.noteSpacing;
       const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       group.setAttribute('cursor', 'pointer');
 
-      entries.forEach(({ entry, y }) => {
+      const sortedEntries = entries.slice().sort((a, b) => b.y - a.y);
+      const offsets = this.computeChordOffsets(sortedEntries.length);
+      const noteXs: number[] = [];
+      const ys: number[] = [];
+
+      sortedEntries.forEach(({ entry, y }, chordIdx) => {
+        const offset = offsets[chordIdx] ?? 0;
+        const noteX = baseX + offset;
+        noteXs.push(noteX);
+        ys.push(y);
+
         const top = this.staveTop;
         const bottom = this.staveTop + 4 * this.lineSpacing;
 
@@ -78,8 +163,8 @@ export class DrawService {
         for (let i = 1; i <= ledgerCountAbove; i++) {
           const ly = top - i * this.lineSpacing;
           const ledger = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          ledger.setAttribute('x1', String(x - 12));
-          ledger.setAttribute('x2', String(x + 12));
+          ledger.setAttribute('x1', String(noteX - 12));
+          ledger.setAttribute('x2', String(noteX + 12));
           ledger.setAttribute('y1', String(ly));
           ledger.setAttribute('y2', String(ly));
           ledger.setAttribute('stroke', 'black');
@@ -90,8 +175,8 @@ export class DrawService {
         for (let i = 1; i <= ledgerCountBelow; i++) {
           const ly = bottom + i * this.lineSpacing;
           const ledger = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          ledger.setAttribute('x1', String(x - 12));
-          ledger.setAttribute('x2', String(x + 12));
+          ledger.setAttribute('x1', String(noteX - 12));
+          ledger.setAttribute('x2', String(noteX + 12));
           ledger.setAttribute('y1', String(ly));
           ledger.setAttribute('y2', String(ly));
           ledger.setAttribute('stroke', 'black');
@@ -99,40 +184,64 @@ export class DrawService {
         }
 
         const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-        ellipse.setAttribute('cx', String(x));
+        ellipse.setAttribute('cx', String(noteX));
         ellipse.setAttribute('cy', String(y));
         ellipse.setAttribute('rx', '7');
         ellipse.setAttribute('ry', '5');
         ellipse.setAttribute('fill', 'black');
-        ellipse.setAttribute('transform', `rotate(-20 ${x} ${y})`);
+        ellipse.setAttribute('transform', `rotate(-20 ${noteX} ${y})`);
+        if (this.selectedEntry === entry) {
+          ellipse.setAttribute('stroke', '#ff5722');
+          ellipse.setAttribute('stroke-width', '2');
+        } else {
+          ellipse.setAttribute('stroke', 'none');
+          ellipse.setAttribute('stroke-width', '0');
+        }
         ellipse.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          const i = this.notes.indexOf(entry);
-          if (i > -1) {
-            this.notes.splice(i, 1);
-            this.redraw();
-          }
+          this.setSelectedEntry(entry);
         });
         group.appendChild(ellipse);
+
+        const accidentalSymbol = entry.note.getAccidentalSymbol();
+        if (accidentalSymbol) {
+          const accidental = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          accidental.textContent = accidentalSymbol;
+          accidental.setAttribute('x', String(noteX - 14));
+          accidental.setAttribute('y', String(y));
+          accidental.setAttribute('font-size', '16');
+          accidental.setAttribute('font-family', 'serif');
+          accidental.setAttribute('dominant-baseline', 'middle');
+          accidental.setAttribute('text-anchor', 'middle');
+          accidental.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            this.setSelectedEntry(entry);
+          });
+          group.appendChild(accidental);
+        }
       });
 
-      const ys = entries.map((e) => e.y);
-      const firstY = ys[0];
-      const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      stem.setAttribute('stroke', 'black');
-      stem.setAttribute('stroke-width', '1');
-      if (firstY < middleY) {
-        stem.setAttribute('x1', String(x - 5));
-        stem.setAttribute('y1', String(Math.min(...ys)));
-        stem.setAttribute('x2', String(x - 5));
-        stem.setAttribute('y2', String(Math.max(...ys) + 35));
-      } else {
-        stem.setAttribute('x1', String(x + 5));
-        stem.setAttribute('y1', String(Math.max(...ys)));
-        stem.setAttribute('x2', String(x + 5));
-        stem.setAttribute('y2', String(Math.min(...ys) - 35));
+      if (sortedEntries.length > 0) {
+        const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        stem.setAttribute('stroke', 'black');
+        stem.setAttribute('stroke-width', '1');
+        const topY = Math.min(...ys);
+        const bottomY = Math.max(...ys);
+        if (topY < middleY) {
+          const stemX = Math.min(...noteXs) - 5;
+          stem.setAttribute('x1', String(stemX));
+          stem.setAttribute('x2', String(stemX));
+          stem.setAttribute('y1', String(topY));
+          stem.setAttribute('y2', String(bottomY + 35));
+        } else {
+          const stemX = Math.max(...noteXs) + 5;
+          stem.setAttribute('x1', String(stemX));
+          stem.setAttribute('x2', String(stemX));
+          stem.setAttribute('y1', String(bottomY));
+          stem.setAttribute('y2', String(topY - 35));
+        }
+        group.appendChild(stem);
       }
-      group.appendChild(stem);
 
       this.svg.appendChild(group);
     });
