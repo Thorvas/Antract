@@ -1,5 +1,24 @@
 <div>
   <h2>Przykład notacji muzycznej</h2>
   <div #staff></div>
+
+  <div class="note-actions" *ngIf="(selectedNote$ | async) as selection">
+    <h3>Selected note</h3>
+    <p class="note-actions__label">{{ formatNote(selection.note) }}</p>
+    <div class="note-actions__buttons">
+      <button type="button" (click)="lowerSelected()">Lower ½ tone</button>
+      <button type="button" (click)="raiseSelected()">Raise ½ tone</button>
+      <button type="button" class="note-actions__delete" (click)="deleteSelected()">
+        Delete note
+      </button>
+      <button
+        type="button"
+        class="note-actions__secondary"
+        (click)="clearSelection()"
+      >
+        Close
+      </button>
+    </div>
+  </div>
 </div>
   

@@ -1,0 +1,73 @@
+:host {
+  display: block;
+}
+
+.note-actions {
+  margin-top: 1.5rem;
+  padding: 1rem 1.25rem;
+  border: 1px solid #d5d5d5;
+  border-radius: 8px;
+  background-color: #f9f9fb;
+  max-width: 360px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.05);
+}
+
+.note-actions h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+}
+
+.note-actions__label {
+  margin: 0 0 1rem 0;
+  font-size: 1.4rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.note-actions__buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.note-actions__buttons button {
+  padding: 0.5rem 0.9rem;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  background-color: #1976d2;
+  color: #ffffff;
+  transition: background-color 0.2s ease;
+}
+
+.note-actions__buttons button:hover {
+  background-color: #145ca3;
+}
+
+.note-actions__buttons button:focus-visible {
+  outline: 2px solid #0d47a1;
+  outline-offset: 2px;
+}
+
+.note-actions__delete {
+  background-color: #d32f2f;
+}
+
+.note-actions__delete:hover {
+  background-color: #b71c1c;
+}
+
+.note-actions__secondary {
+  background-color: #e0e0e0;
+  color: #2f2f2f;
+}
+
+.note-actions__secondary:hover {
+  background-color: #c7c7c7;
+}
+
+.note-actions__secondary:focus-visible {
+  outline: 2px solid #757575;
+  outline-offset: 2px;
+}
