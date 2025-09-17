@@ -20,6 +20,15 @@ export class DrawService {
   private readonly lineSpacing = 10;
   private readonly noteSpacing = 40;
   private readonly chordOffsetSpacing = 6;
+  private readonly stepMap: Record<string, number> = {
+    'C': 0,
+    'D': 1,
+    'E': 2,
+    'F': 3,
+    'G': 4,
+    'A': 5,
+    'H': 6
+  };
 
   constructor() {}
 
@@ -104,15 +113,53 @@ export class DrawService {
     }
   }
 
-  private computeChordOffsets(count: number): number[] {
-    if (count <= 1) {
-      return [0];
+  private computeChordOffsets(
+    entries: { entry: { note: Note; index: number }; y: number }[],
+    stemDown: boolean
+  ): number[] {
+    const count = entries.length;
+    if (count === 0) {
+      return [];
     }
-    const offsets: number[] = [];
-    for (let i = 0; i < count; i++) {
-      const direction = i % 2 === 0 ? -1 : 1;
-      offsets.push(direction * this.chordOffsetSpacing);
+
+    const offsets = new Array<number>(count).fill(0);
+    if (count === 1) {
+      return offsets;
     }
+
+    const steps = entries.map(({ entry }) => this.getStepsFromC4(entry.note));
+
+    let clusterStart = 0;
+    while (clusterStart < count) {
+      let clusterEnd = clusterStart;
+      while (clusterEnd + 1 < count) {
+        const diff = Math.abs(steps[clusterEnd + 1] - steps[clusterEnd]);
+        if (diff === 0 || diff === 1) {
+          clusterEnd++;
+        } else {
+          break;
+        }
+      }
+
+      if (clusterEnd > clusterStart) {
+        if (stemDown) {
+          let offset = -this.chordOffsetSpacing;
+          for (let i = clusterEnd; i >= clusterStart; i--) {
+            offsets[i] = offset;
+            offset = offset === -this.chordOffsetSpacing ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
+          }
+        } else {
+          let offset = -this.chordOffsetSpacing;
+          for (let i = clusterStart; i <= clusterEnd; i++) {
+            offsets[i] = offset;
+            offset = offset === -this.chordOffsetSpacing ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
+          }
+        }
+      }
+
+      clusterStart = clusterEnd + 1;
+    }
+
     return offsets;
   }
 
@@ -139,7 +186,12 @@ export class DrawService {
       group.setAttribute('cursor', 'pointer');
 
       const sortedEntries = entries.slice().sort((a, b) => b.y - a.y);
-      const offsets = this.computeChordOffsets(sortedEntries.length);
+      let stemDown = false;
+      if (sortedEntries.length > 0) {
+        const topYPosition = Math.min(...sortedEntries.map((entry) => entry.y));
+        stemDown = topYPosition < middleY;
+      }
+      const offsets = this.computeChordOffsets(sortedEntries, stemDown);
       const noteXs: number[] = [];
       const ys: number[] = [];
 
@@ -220,7 +272,6 @@ export class DrawService {
         stem.setAttribute('stroke-width', '1');
         const topY = Math.min(...ys);
         const bottomY = Math.max(...ys);
-        const stemDown = topY < middleY;
         const stemX = stemDown
           ? Math.min(...noteXs) - 5
           : Math.max(...noteXs) + 5;
@@ -254,22 +305,17 @@ export class DrawService {
   }
 
   private getYForNote(note: Note): number {
-    const stepMap: Record<string, number> = {
-      'C': 0,
-      'D': 1,
-      'E': 2,
-      'F': 3,
-      'G': 4,
-      'A': 5,
-      'H': 6
-    };
-    const stepsFromC4 = stepMap[note.getLetter()] + (note.getOctave() - 4) * 7;
+    const stepsFromC4 = this.getStepsFromC4(note);
     // bottom line of the staff corresponds to E4 (2 steps above C4)
     return (
       this.staveTop +
       4 * this.lineSpacing -
       (stepsFromC4 - 2) * (this.lineSpacing / 2)
     );
+  }
+
+  private getStepsFromC4(note: Note): number {
+    return this.stepMap[note.getLetter()] + (note.getOctave() - 4) * 7;
   }
 
   private getNoteFromY(y: number): Note {
