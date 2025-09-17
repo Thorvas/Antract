@@ -221,7 +221,7 @@ export class DrawService {
         }
       });
 
-      if (sortedEntries.length > 0) {
+      if (sortedEntries.length === 1) {
         const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         stem.setAttribute('stroke', 'black');
         stem.setAttribute('stroke-width', '1');
