@@ -109,16 +109,9 @@ export class DrawService {
       return [0];
     }
     const offsets: number[] = [];
-    let leftSteps = 0;
-    let rightSteps = 0;
     for (let i = 0; i < count; i++) {
-      if (i % 2 === 0) {
-        leftSteps += 1;
-        offsets.push(-this.chordOffsetSpacing * leftSteps);
-      } else {
-        rightSteps += 1;
-        offsets.push(this.chordOffsetSpacing * rightSteps);
-      }
+      const direction = i % 2 === 0 ? -1 : 1;
+      offsets.push(direction * this.chordOffsetSpacing);
     }
     return offsets;
   }
