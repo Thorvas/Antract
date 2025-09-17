@@ -214,22 +214,22 @@ export class DrawService {
         }
       });
 
-      if (sortedEntries.length === 1) {
+      if (sortedEntries.length > 0) {
         const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
         stem.setAttribute('stroke', 'black');
         stem.setAttribute('stroke-width', '1');
         const topY = Math.min(...ys);
         const bottomY = Math.max(...ys);
-        if (topY < middleY) {
-          const stemX = Math.min(...noteXs) - 5;
-          stem.setAttribute('x1', String(stemX));
-          stem.setAttribute('x2', String(stemX));
+        const stemDown = topY < middleY;
+        const stemX = stemDown
+          ? Math.min(...noteXs) - 5
+          : Math.max(...noteXs) + 5;
+        stem.setAttribute('x1', String(stemX));
+        stem.setAttribute('x2', String(stemX));
+        if (stemDown) {
           stem.setAttribute('y1', String(topY));
           stem.setAttribute('y2', String(bottomY + 35));
         } else {
-          const stemX = Math.max(...noteXs) + 5;
-          stem.setAttribute('x1', String(stemX));
-          stem.setAttribute('x2', String(stemX));
           stem.setAttribute('y1', String(bottomY));
           stem.setAttribute('y2', String(topY - 35));
         }
