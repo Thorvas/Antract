@@ -1,0 +1,318 @@
+1: export class Note {
+2:   private pitch: number;
+3:   private letter: string;
+4:   private octave: number;
+5: 
+6:   private static readonly letterSemitones: { [key: string]: number } = {
+7:     C: 0,
+8:     D: 2,
+9:     E: 4,
+10:     F: 5,
+11:     G: 7,
+12:     A: 9,
+13:     H: 11
+14:   };
+15: 
+16:   private static readonly letterOrder: string[] = ['C', 'D', 'E', 'F', 'G', 'A', 'H'];
+17: 
+18:   constructor(pitch: number, letter: string, octave: number = 0) {
+19:     this.octave = octave;
+20:     this.pitch = pitch;
+21:     this.letter = letter;
+22:   }
+23: 
+24:   private static resolveOctaveAndPitch(totalSemitone: number, letter: string): {
+25:     octave: number;
+26:     pitch: number;
+27:   } {
+28:     const base = Note.letterSemitones[letter];
+29:     let octave = Math.round((totalSemitone - base) / 12);
+30:     let pitch = totalSemitone - (octave * 12 + base);
+31: 
+32:     while (pitch > 1) {
+33:       octave += 1;
+34:       pitch = totalSemitone - (octave * 12 + base);
+35:     }
+36: 
+37:     while (pitch < -1) {
+38:       octave -= 1;
+39:       pitch = totalSemitone - (octave * 12 + base);
+40:     }
+41: 
+42:     return { octave, pitch };
+43:   }
+44: 
+45:   private getTotalSemitone(): number {
+46:     return this.octave * 12 + Note.letterSemitones[this.letter] + this.pitch;
+47:   }
+48: 
+49:   public getSemitone(letter: string): number {
+50:     return Note.letterSemitones[letter];
+51:   }
+52: 
+53:   public getPitch(): number {
+54:     return this.pitch;
+55:   }
+56: 
+57:   public setPitch(newOctave: number): void {
+58:     this.pitch = newOctave;
+59:   }
+60: 
+61:   public getLetter(): string {
+62:     return this.letter;
+63:   }
+64: 
+65:   public setLetter(newNote: string): void {
+66:     this.letter = newNote;
+67:   }
+68: 
+69:   public getOctave(): number {
+70:     return this.octave;
+71:   }
+72: 
+73:   public setOctave(newOctave: number): void {
+74:     this.octave = newOctave;
+75:   }
+76: 
+77:   public transposeSemitone(distance: number): void {
+78:     if (distance === 0) {
+79:       return;
+80:     }
+81: 
+82:     if (distance > 0) {
+83:       for (let i = 0; i < distance; i++) {
+84:         this.raiseOneSemitone();
+85:       }
+86:     } else {
+87:       for (let i = 0; i < Math.abs(distance); i++) {
+88:         this.lowerOneSemitone();
+89:       }
+90:     }
+91:   }
+92: 
+93:   private raiseOneSemitone(): void {
+94:     const total = this.getTotalSemitone() + 1;
+95: 
+96:     if (this.pitch < 1) {
+97:       this.pitch += 1;
+98:       return;
+99:     }
+100: 
+101:     const currentIndex = Note.letterOrder.indexOf(this.letter);
+102:     const nextIndex = (currentIndex + 1) % Note.letterOrder.length;
+103:     const nextLetter = Note.letterOrder[nextIndex];
+104:     const { octave, pitch } = Note.resolveOctaveAndPitch(total, nextLetter);
+105: 
+106:     this.letter = nextLetter;
+107:     this.octave = octave;
+108:     this.pitch = pitch;
+109:   }
+110: 
+111:   private lowerOneSemitone(): void {
+112:     const total = this.getTotalSemitone() - 1;
+113: 
+114:     if (this.pitch > -1) {
+115:       this.pitch -= 1;
+116:       return;
+117:     }
+118: 
+119:     const currentIndex = Note.letterOrder.indexOf(this.letter);
+120:     const prevIndex = (currentIndex - 1 + Note.letterOrder.length) % Note.letterOrder.length;
+121:     const prevLetter = Note.letterOrder[prevIndex];
+122:     const { octave, pitch } = Note.resolveOctaveAndPitch(total, prevLetter);
+123: 
+124:     this.letter = prevLetter;
+125:     this.octave = octave;
+126:     this.pitch = pitch;
+127:   }
+128: 
+129:   public getAccidentalSymbol(): string {
+130:     if (this.pitch === 0) {
+131:       return '';
+132:     }
+133: 
+134:     if (this.pitch > 0) {
+135:       return '♯'.repeat(this.pitch);
+136:     }
+137: 
+138:     return '♭'.repeat(Math.abs(this.pitch));
+139:   }
+140: 
+141:   public addInterval(semitoneDistance: number, noteNumber: number) {
+142: 
+143:     let notes: string[] = ['C', "D", "E", "F", "G", "A", "H"];
+144: 
+145:     const targetNote: string = notes[((notes.indexOf(this.getLetter()) + (noteNumber - Math.sign(noteNumber)) % notes.length
+146:  + notes.length) % notes.length)];
+147:     console.log(`Target note: ${(notes.indexOf(this.getLetter()) + (noteNumber - Math.sign(noteNumber)) + notes.length) % notes.length}`);
+148:     let targetOctave: number = this.getOctave();
+149: 
+150:     let startNoteSemitone: number = this.getSemitone(this.getLetter()) + this.getPitch();
+151:     let targetNoteSemitone: number = this.getSemitone(targetNote);
+152: 
+153:     if (startNoteSemitone > targetNoteSemitone && semitoneDistance > 0) {
+154:       targetOctave += 1;
+155:       targetNoteSemitone += 12;
+156:     } else if (startNoteSemitone < targetNoteSemitone && semitoneDistance < 0) {
+157:       targetOctave -= 1;
+158:       targetNoteSemitone -= 12;
+159:     }
+160: 
+161:     if (semitoneDistance >= 12 || semitoneDistance <= -12) {
+162:       if (semitoneDistance >= 12) {
+163:         targetOctave += Math.floor(semitoneDistance / 12);
+164:       } else if (semitoneDistance <= -12) {
+165:         targetOctave += Math.ceil(semitoneDistance / 12);
+166:       }
+167:       semitoneDistance = semitoneDistance % 12;
+168:     }
+169: 
+170:     const naturalSemitoneOffset: number = (targetNoteSemitone - startNoteSemitone);
+171:     const difference: number = semitoneDistance - naturalSemitoneOffset;
+172: 
+173:     return new Note(difference, targetNote, targetOctave);
+174:   }
+175: 
+176:   toString(): string {
+177:     const letterName = this.letter;
+178:     const acc = this.pitch;
+179:     if (acc === 0) {
+180:       return letterName + `Octave: ${this.octave}`;
+181:     } else if (acc > 0) {
+182:       return letterName + 'is'.repeat(acc) + `Octave: ${this.octave}`;
+183:     } else {
+184:       const flats = -acc;
+185:       if (flats === 1) {
+186:         if (letterName === 'A' || letterName === 'E') return letterName + 's' + `Octave: ${this.octave}`;
+187:         if (letterName === 'H') return 'B' + `Octave: ${this.octave}`;
+188:         return letterName + 'es' + `Octave: ${this.octave}`;
+189:       } else {
+190:         let suffix = '';
+191:         if (letterName === 'A' || letterName === 'E') {
+192:           suffix = 's' + 'es'.repeat(flats - 1);
+193:         } else if (letterName === 'H') {
+194:           suffix = 'es'.repeat(flats);
+195:         } else {
+196:           suffix = 'es'.repeat(flats);
+197:         }
+198:         return letterName + suffix + `Octave: ${this.octave}`;
+199:       }
+200:     }
+201:   }
+202: 
+203:   public calculateUnison(): Note {
+204:     return this.addInterval(0, 1);
+205:   }
+206: 
+207:   public calculateMinorSecond(): Note {
+208:     return this.addInterval(1, 2);
+209:   }
+210: 
+211:   public calculateMajorSecond(): Note {
+212:     return this.addInterval(2, 2);
+213:   }
+214: 
+215:   public calculateMinorThird(): Note {
+216:     return this.addInterval(3, 3);
+217:   }
+218: 
+219:   public calculateMajorThird(): Note {
+220:     return this.addInterval(4, 3);
+221:   }
+222: 
+223:   public calculatePerfectFourth(): Note {
+224:     return this.addInterval(5, 4);
+225:   }
+226: 
+227:   public calculateAugmentedFourth(): Note {
+228:     return this.addInterval(6, 4);
+229:   }
+230: 
+231:   public calculateDiminishedFourth(): Note {
+232:     return this.addInterval(4, 4);
+233:   }
+234: 
+235:   public calculateDiminishedFifth(): Note {
+236:     return this.addInterval(6, 5);
+237:   }
+238: 
+239:   public calculatePerfectFifth(): Note {
+240:     return this.addInterval(7, 5);
+241:   }
+242: 
+243:   public calculateMinorSixth(): Note {
+244:     return this.addInterval(8, 6);
+245:   }
+246: 
+247:   public calculateMajorSixth(): Note {
+248:     return this.addInterval(9, 6);
+249:   }
+250: 
+251:   public calculateMinorSeventh(): Note {
+252:     return this.addInterval(10, 7);
+253:   }
+254: 
+255:   public calculateMajorSeventh(): Note {
+256:     return this.addInterval(11, 7);
+257:   }
+258: 
+259:   public calculatePerfectOctave(): Note {
+260:     return this.addInterval(12, 8);
+261:   }
+262: 
+263:   public calculateMinorNinth(): Note {
+264:     return this.addInterval(13, 9);
+265:   }
+266: 
+267:   public calculateMajorNinth(): Note {
+268:     return this.addInterval(14, 9);
+269:   }
+270: 
+271:   public calculateMinorTenth(): Note {
+272:     return this.addInterval(15, 10);
+273:   }
+274: 
+275:   public calculateMajorTenth(): Note {
+276:     return this.addInterval(16, 10);
+277:   }
+278: 
+279:   public calculatePerfectEleventh(): Note {
+280:     return this.addInterval(17, 11);
+281:   }
+282: 
+283:   public calculateAugmentedEleventh(): Note {
+284:     return this.addInterval(18, 11);
+285:   }
+286: 
+287:   public calculateDiminishedTwelfth(): Note {
+288:     return this.addInterval(18, 12);
+289:   }
+290: 
+291:   public calculatePerfectTwelfth(): Note {
+292:     return this.addInterval(19, 12);
+293:   }
+294: 
+295:   public calculateMinorThirteenth(): Note {
+296:     return this.addInterval(20, 13);
+297:   }
+298: 
+299:   public calculateMajorThirteenth(): Note {
+300:     return this.addInterval(21, 13);
+301:   }
+302: 
+303:   public calculateMinorFourteenth(): Note {
+304:     return this.addInterval(22, 14);
+305:   }
+306: 
+307:   public calculateMajorFourteenth(): Note {
+308:     return this.addInterval(23, 14);
+309:   }
+310: 
+311:   public calculatePerfectFifteenth(): Note {
+312:     return this.addInterval(24, 15);
+313:   }
+314: 
+315:   public calculateKwintaDown(): Note {
+316:     return this.addInterval(-7, -5);
+317:   }
+318: }

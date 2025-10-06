@@ -21,9 +21,6 @@ export class DrawService {
   private readonly noteSpacing = 40;
   private readonly chordOffsetSpacing = 6;
   
-  // Base notehead size
-  private readonly baseRx = 7;
-  private readonly baseRy = 5;
   private readonly stepMap: Record<string, number> = {
     'C': 0,
     'D': 1,
@@ -48,8 +45,17 @@ export class DrawService {
   }
 
   public addNote(note: Note, index: number): void {
+    // Prevent duplicate staff positions within the same chord column
+    const newSteps = this.getStepsFromC4(note);
+    const existing = this.notes.find(e => e.index === index && this.getStepsFromC4(e.note) === newSteps);
+    if (existing) {
+      // Select existing instead of placing a second head next to it
+      this.setSelectedEntry(existing, false);
+      return;
+    }
     const entry = { note, index };
     this.notes.push(entry);
+    console.log(this.notes);
     this.setSelectedEntry(entry, false);
     this.redraw();
   }
@@ -69,10 +75,8 @@ export class DrawService {
     const y = event.clientY - rect.top;
     const index = Math.round((x - this.staveLeft) / this.noteSpacing);
     const note = this.getNoteFromY(y);
-    const entry = { note, index };
-    this.notes.push(entry);
-    this.setSelectedEntry(entry, false);
-    this.redraw();
+    // Delegate to addNote, which enforces deduplication per staff position
+    this.addNote(note, index);
   }
 
   public clearSelection(): void {
@@ -195,20 +199,6 @@ export class DrawService {
     return offsets;
   }
   
-  // Determine notehead scale for a chord based on minimal vertical gap.
-  private computeNoteheadScale(ys: number[]): number {
-    if (ys.length <= 1) return 1;
-    let minGap = Infinity;
-    for (let i = 0; i + 1 < ys.length; i++) {
-      const g = Math.abs(ys[i + 1] - ys[i]);
-      if (g < minGap) minGap = g;
-    }
-    const s = this.lineSpacing; // typical = 10px
-    if (minGap < 0.5 * s) return 0.75; // very dense
-    if (minGap < 0.6 * s) return 0.82;
-    if (minGap < 0.8 * s) return 0.9;
-    return 1;
-  }
 
   private redraw(): void {
     if (!this.svg) {
@@ -221,8 +211,13 @@ export class DrawService {
     this.notes.forEach((entry) => {
       const y = this.getYForNote(entry.note);
       const arr = notesByIndex.get(entry.index) || [];
-      arr.push({ entry, y });
-      notesByIndex.set(entry.index, arr);
+      // Avoid placing two heads on the same staff position within one index
+      const steps = this.getStepsFromC4(entry.note);
+      const existsSamePos = arr.some(e => this.getStepsFromC4(e.entry.note) === steps);
+      if (!existsSamePos) {
+        arr.push({ entry, y });
+        notesByIndex.set(entry.index, arr);
+      }
     });
 
     const middleY = this.staveTop + 2 * this.lineSpacing;
@@ -246,10 +241,6 @@ export class DrawService {
         const d = Math.abs(stepSeq[i + 1] - stepSeq[i]);
         if (d <= 1) { hasSecond = true; break; }
       }
-      const ysForScale = sortedEntries.map(({ y }) => y);
-      const scale = this.computeNoteheadScale(ysForScale);
-      const rx = this.baseRx * scale;
-      const ry = this.baseRy * scale;
       const offsets = this.computeChordOffsets(sortedEntries, stemDown, hasSecond);
       const noteXs: number[] = [];
       const ys: number[] = [];
@@ -290,8 +281,8 @@ export class DrawService {
         const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
         ellipse.setAttribute('cx', String(noteX));
         ellipse.setAttribute('cy', String(y));
-        ellipse.setAttribute('rx', String(rx));
-        ellipse.setAttribute('ry', String(ry));
+        ellipse.setAttribute('rx', '7');
+        ellipse.setAttribute('ry', '5');
         ellipse.setAttribute('fill', 'black');
         ellipse.setAttribute('transform', `rotate(-20 ${noteX} ${y})`);
         if (this.selectedEntry === entry) {
@@ -351,6 +342,8 @@ export class DrawService {
       this.svg.appendChild(group);
     });
   }
+
+  
 
   private drawStaff(): void {
     for (let i = 0; i < 5; i++) {
