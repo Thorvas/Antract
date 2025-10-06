@@ -20,6 +20,10 @@ export class DrawService {
   private readonly lineSpacing = 10;
   private readonly noteSpacing = 40;
   private readonly chordOffsetSpacing = 6;
+  
+  // Base notehead size
+  private readonly baseRx = 7;
+  private readonly baseRy = 5;
   private readonly stepMap: Record<string, number> = {
     'C': 0,
     'D': 1,
@@ -115,7 +119,8 @@ export class DrawService {
 
   private computeChordOffsets(
     entries: { entry: { note: Note; index: number }; y: number }[],
-    stemDown: boolean
+    stemDown: boolean,
+    placeStemBetween: boolean
   ): number[] {
     const count = entries.length;
     if (count === 0) {
@@ -142,14 +147,21 @@ export class DrawService {
       }
 
       if (clusterEnd > clusterStart) {
+        // Music engraving convention:
+        // - Stem up: higher note heads go to the right.
+        // - Stem down: lower note heads go to the right.
+        // 'entries' are sorted low -> high by y (descending y), so
+        // we start clusters with the lowest note at clusterStart.
         if (stemDown) {
-          let offset = -this.chordOffsetSpacing;
-          for (let i = clusterEnd; i >= clusterStart; i--) {
+          // Start on the right for the lowest note, then alternate.
+          let offset = this.chordOffsetSpacing; // right
+          for (let i = clusterStart; i <= clusterEnd; i++) {
             offsets[i] = offset;
-            offset = offset === -this.chordOffsetSpacing ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
+            offset = offset === this.chordOffsetSpacing ? -this.chordOffsetSpacing : this.chordOffsetSpacing;
           }
         } else {
-          let offset = -this.chordOffsetSpacing;
+          // Start on the left for the lowest note, then alternate.
+          let offset = -this.chordOffsetSpacing; // left
           for (let i = clusterStart; i <= clusterEnd; i++) {
             offsets[i] = offset;
             offset = offset === -this.chordOffsetSpacing ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
@@ -160,7 +172,42 @@ export class DrawService {
       clusterStart = clusterEnd + 1;
     }
 
+    // If the stem will be centered between noteheads (e.g., when a
+    // second/unison exists), ensure no note remains centered on the
+    // stem line. We do this by assigning sides to all remaining notes
+    // (those not already offset within a tight cluster), alternating
+    // left/right from the lowest note upward. The starting side follows
+    // engraving rules: stem up -> lowest note left; stem down -> lowest
+    // note right.
+    if (placeStemBetween) {
+      let currentSide = stemDown ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
+      for (let i = 0; i < count; i++) {
+        if (offsets[i] === 0) {
+          offsets[i] = currentSide;
+          currentSide = -currentSide;
+        } else {
+          // Continue alternating based on the actual sign used.
+          currentSide = offsets[i] > 0 ? -this.chordOffsetSpacing : this.chordOffsetSpacing;
+        }
+      }
+    }
+
     return offsets;
+  }
+  
+  // Determine notehead scale for a chord based on minimal vertical gap.
+  private computeNoteheadScale(ys: number[]): number {
+    if (ys.length <= 1) return 1;
+    let minGap = Infinity;
+    for (let i = 0; i + 1 < ys.length; i++) {
+      const g = Math.abs(ys[i + 1] - ys[i]);
+      if (g < minGap) minGap = g;
+    }
+    const s = this.lineSpacing; // typical = 10px
+    if (minGap < 0.5 * s) return 0.75; // very dense
+    if (minGap < 0.6 * s) return 0.82;
+    if (minGap < 0.8 * s) return 0.9;
+    return 1;
   }
 
   private redraw(): void {
@@ -191,7 +238,19 @@ export class DrawService {
         const topYPosition = Math.min(...sortedEntries.map((entry) => entry.y));
         stemDown = topYPosition < middleY;
       }
-      const offsets = this.computeChordOffsets(sortedEntries, stemDown);
+      // Determine if chord contains at least one second/unison to decide
+      // whether the stem should be centered between noteheads.
+      const stepSeq = sortedEntries.map(({ entry }) => this.getStepsFromC4(entry.note));
+      let hasSecond = false;
+      for (let i = 0; i + 1 < stepSeq.length; i++) {
+        const d = Math.abs(stepSeq[i + 1] - stepSeq[i]);
+        if (d <= 1) { hasSecond = true; break; }
+      }
+      const ysForScale = sortedEntries.map(({ y }) => y);
+      const scale = this.computeNoteheadScale(ysForScale);
+      const rx = this.baseRx * scale;
+      const ry = this.baseRy * scale;
+      const offsets = this.computeChordOffsets(sortedEntries, stemDown, hasSecond);
       const noteXs: number[] = [];
       const ys: number[] = [];
 
@@ -231,8 +290,8 @@ export class DrawService {
         const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
         ellipse.setAttribute('cx', String(noteX));
         ellipse.setAttribute('cy', String(y));
-        ellipse.setAttribute('rx', '7');
-        ellipse.setAttribute('ry', '5');
+        ellipse.setAttribute('rx', String(rx));
+        ellipse.setAttribute('ry', String(ry));
         ellipse.setAttribute('fill', 'black');
         ellipse.setAttribute('transform', `rotate(-20 ${noteX} ${y})`);
         if (this.selectedEntry === entry) {
@@ -272,9 +331,11 @@ export class DrawService {
         stem.setAttribute('stroke-width', '1');
         const topY = Math.min(...ys);
         const bottomY = Math.max(...ys);
-        const stemX = stemDown
-          ? Math.min(...noteXs) - 5
-          : Math.max(...noteXs) + 5;
+        // Place the stem between noteheads when they are displaced
+        // on both sides (e.g., seconds). Otherwise keep outside.
+        const minX = Math.min(...noteXs);
+        const maxX = Math.max(...noteXs);
+        const stemX = hasSecond ? baseX : (stemDown ? minX - 5 : maxX + 5);
         stem.setAttribute('x1', String(stemX));
         stem.setAttribute('x2', String(stemX));
         if (stemDown) {
