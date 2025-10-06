@@ -1,4 +1,5 @@
 import { ElementRef, Injectable } from '@angular/core';
+import { BehaviorSubject } from 'rxjs';
 import { Note } from '../services/Note';
 
 @Injectable({
@@ -7,6 +8,10 @@ import { Note } from '../services/Note';
 export class DrawService {
   private svg!: SVGSVGElement;
   private notes: { note: Note; index: number }[] = [];
+  private selectedEntry: { note: Note; index: number } | null = null;
+  private readonly selectedNoteSubject = new BehaviorSubject<{ note: Note; index: number } | null>(null);
+
+  public readonly selectedNote$ = this.selectedNoteSubject.asObservable();
 
   private readonly width = 500;
   private readonly height = 200;
@@ -14,6 +19,17 @@ export class DrawService {
   private readonly staveTop = 40;
   private readonly lineSpacing = 10;
   private readonly noteSpacing = 40;
+  private readonly chordOffsetSpacing = 6;
+  
+  private readonly stepMap: Record<string, number> = {
+    'C': 0,
+    'D': 1,
+    'E': 2,
+    'F': 3,
+    'G': 4,
+    'A': 5,
+    'H': 6
+  };
 
   constructor() {}
 
@@ -29,12 +45,24 @@ export class DrawService {
   }
 
   public addNote(note: Note, index: number): void {
-    this.notes.push({ note, index });
+    // Prevent duplicate staff positions within the same chord column
+    const newSteps = this.getStepsFromC4(note);
+    const existing = this.notes.find(e => e.index === index && this.getStepsFromC4(e.note) === newSteps);
+    if (existing) {
+      // Select existing instead of placing a second head next to it
+      this.setSelectedEntry(existing, false);
+      return;
+    }
+    const entry = { note, index };
+    this.notes.push(entry);
+    console.log(this.notes);
+    this.setSelectedEntry(entry, false);
     this.redraw();
   }
 
   public drawNotes(notes: Note[]): void {
     this.notes = notes.map((n, i) => ({ note: n, index: i }));
+    this.setSelectedEntry(null, false);
     this.redraw();
   }
 
@@ -47,11 +75,135 @@ export class DrawService {
     const y = event.clientY - rect.top;
     const index = Math.round((x - this.staveLeft) / this.noteSpacing);
     const note = this.getNoteFromY(y);
-    this.notes.push({ note, index });
+    // Delegate to addNote, which enforces deduplication per staff position
+    this.addNote(note, index);
+  }
+
+  public clearSelection(): void {
+    if (!this.selectedEntry) {
+      return;
+    }
+    this.setSelectedEntry(null);
+  }
+
+  public deleteSelectedNote(): void {
+    if (!this.selectedEntry) {
+      return;
+    }
+    const idx = this.notes.indexOf(this.selectedEntry);
+    if (idx > -1) {
+      this.notes.splice(idx, 1);
+    }
+    this.setSelectedEntry(null, true);
     this.redraw();
   }
 
+  public transposeSelected(delta: number): void {
+    if (!this.selectedEntry || delta === 0) {
+      return;
+    }
+    this.selectedEntry.note.transposeSemitone(delta);
+    this.selectedNoteSubject.next({
+      note: this.selectedEntry.note,
+      index: this.selectedEntry.index
+    });
+    this.redraw();
+  }
+
+  private setSelectedEntry(
+    entry: { note: Note; index: number } | null,
+    skipRedraw = false
+  ): void {
+    this.selectedEntry = entry;
+    this.selectedNoteSubject.next(entry ? { note: entry.note, index: entry.index } : null);
+    if (!skipRedraw && this.svg) {
+      this.redraw();
+    }
+  }
+
+  private computeChordOffsets(
+    entries: { entry: { note: Note; index: number }; y: number }[],
+    stemDown: boolean,
+    placeStemBetween: boolean
+  ): number[] {
+    const count = entries.length;
+    if (count === 0) {
+      return [];
+    }
+
+    const offsets = new Array<number>(count).fill(0);
+    if (count === 1) {
+      return offsets;
+    }
+
+    const steps = entries.map(({ entry }) => this.getStepsFromC4(entry.note));
+
+    let clusterStart = 0;
+    while (clusterStart < count) {
+      let clusterEnd = clusterStart;
+      while (clusterEnd + 1 < count) {
+        const diff = Math.abs(steps[clusterEnd + 1] - steps[clusterEnd]);
+        if (diff === 0 || diff === 1) {
+          clusterEnd++;
+        } else {
+          break;
+        }
+      }
+
+      if (clusterEnd > clusterStart) {
+        // Music engraving convention:
+        // - Stem up: higher note heads go to the right.
+        // - Stem down: lower note heads go to the right.
+        // 'entries' are sorted low -> high by y (descending y), so
+        // we start clusters with the lowest note at clusterStart.
+        if (stemDown) {
+          // Start on the right for the lowest note, then alternate.
+          let offset = this.chordOffsetSpacing; // right
+          for (let i = clusterStart; i <= clusterEnd; i++) {
+            offsets[i] = offset;
+            offset = offset === this.chordOffsetSpacing ? -this.chordOffsetSpacing : this.chordOffsetSpacing;
+          }
+        } else {
+          // Start on the left for the lowest note, then alternate.
+          let offset = -this.chordOffsetSpacing; // left
+          for (let i = clusterStart; i <= clusterEnd; i++) {
+            offsets[i] = offset;
+            offset = offset === -this.chordOffsetSpacing ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
+          }
+        }
+      }
+
+      clusterStart = clusterEnd + 1;
+    }
+
+    // If the stem will be centered between noteheads (e.g., when a
+    // second/unison exists), ensure no note remains centered on the
+    // stem line. We do this by assigning sides to all remaining notes
+    // (those not already offset within a tight cluster), alternating
+    // left/right from the lowest note upward. The starting side follows
+    // engraving rules: stem up -> lowest note left; stem down -> lowest
+    // note right.
+    if (placeStemBetween) {
+      let currentSide = stemDown ? this.chordOffsetSpacing : -this.chordOffsetSpacing;
+      for (let i = 0; i < count; i++) {
+        if (offsets[i] === 0) {
+          offsets[i] = currentSide;
+          currentSide = -currentSide;
+        } else {
+          // Continue alternating based on the actual sign used.
+          currentSide = offsets[i] > 0 ? -this.chordOffsetSpacing : this.chordOffsetSpacing;
+        }
+      }
+    }
+
+    return offsets;
+  }
+  
+
   private redraw(): void {
+    if (!this.svg) {
+      return;
+    }
     this.svg.innerHTML = '';
     this.drawStaff();
 
@@ -59,18 +211,46 @@ export class DrawService {
     this.notes.forEach((entry) => {
       const y = this.getYForNote(entry.note);
       const arr = notesByIndex.get(entry.index) || [];
-      arr.push({ entry, y });
-      notesByIndex.set(entry.index, arr);
+      // Avoid placing two heads on the same staff position within one index
+      const steps = this.getStepsFromC4(entry.note);
+      const existsSamePos = arr.some(e => this.getStepsFromC4(e.entry.note) === steps);
+      if (!existsSamePos) {
+        arr.push({ entry, y });
+        notesByIndex.set(entry.index, arr);
+      }
     });
 
     const middleY = this.staveTop + 2 * this.lineSpacing;
 
     notesByIndex.forEach((entries, idx) => {
-      const x = this.staveLeft + idx * this.noteSpacing;
+      const baseX = this.staveLeft + idx * this.noteSpacing;
       const group = document.createElementNS('http://www.w3.org/2000/svg', 'g');
       group.setAttribute('cursor', 'pointer');
 
-      entries.forEach(({ entry, y }) => {
+      const sortedEntries = entries.slice().sort((a, b) => b.y - a.y);
+      let stemDown = false;
+      if (sortedEntries.length > 0) {
+        const topYPosition = Math.min(...sortedEntries.map((entry) => entry.y));
+        stemDown = topYPosition < middleY;
+      }
+      // Determine if chord contains at least one second/unison to decide
+      // whether the stem should be centered between noteheads.
+      const stepSeq = sortedEntries.map(({ entry }) => this.getStepsFromC4(entry.note));
+      let hasSecond = false;
+      for (let i = 0; i + 1 < stepSeq.length; i++) {
+        const d = Math.abs(stepSeq[i + 1] - stepSeq[i]);
+        if (d <= 1) { hasSecond = true; break; }
+      }
+      const offsets = this.computeChordOffsets(sortedEntries, stemDown, hasSecond);
+      const noteXs: number[] = [];
+      const ys: number[] = [];
+
+      sortedEntries.forEach(({ entry, y }, chordIdx) => {
+        const offset = offsets[chordIdx] ?? 0;
+        const noteX = baseX + offset;
+        noteXs.push(noteX);
+        ys.push(y);
+
         const top = this.staveTop;
         const bottom = this.staveTop + 4 * this.lineSpacing;
 
@@ -78,8 +258,8 @@ export class DrawService {
         for (let i = 1; i <= ledgerCountAbove; i++) {
           const ly = top - i * this.lineSpacing;
           const ledger = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          ledger.setAttribute('x1', String(x - 12));
-          ledger.setAttribute('x2', String(x + 12));
+          ledger.setAttribute('x1', String(noteX - 12));
+          ledger.setAttribute('x2', String(noteX + 12));
           ledger.setAttribute('y1', String(ly));
           ledger.setAttribute('y2', String(ly));
           ledger.setAttribute('stroke', 'black');
@@ -90,8 +270,8 @@ export class DrawService {
         for (let i = 1; i <= ledgerCountBelow; i++) {
           const ly = bottom + i * this.lineSpacing;
           const ledger = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-          ledger.setAttribute('x1', String(x - 12));
-          ledger.setAttribute('x2', String(x + 12));
+          ledger.setAttribute('x1', String(noteX - 12));
+          ledger.setAttribute('x2', String(noteX + 12));
           ledger.setAttribute('y1', String(ly));
           ledger.setAttribute('y2', String(ly));
           ledger.setAttribute('stroke', 'black');
@@ -99,44 +279,71 @@ export class DrawService {
         }
 
         const ellipse = document.createElementNS('http://www.w3.org/2000/svg', 'ellipse');
-        ellipse.setAttribute('cx', String(x));
+        ellipse.setAttribute('cx', String(noteX));
         ellipse.setAttribute('cy', String(y));
         ellipse.setAttribute('rx', '7');
         ellipse.setAttribute('ry', '5');
         ellipse.setAttribute('fill', 'black');
-        ellipse.setAttribute('transform', `rotate(-20 ${x} ${y})`);
+        ellipse.setAttribute('transform', `rotate(-20 ${noteX} ${y})`);
+        if (this.selectedEntry === entry) {
+          ellipse.setAttribute('stroke', '#ff5722');
+          ellipse.setAttribute('stroke-width', '2');
+        } else {
+          ellipse.setAttribute('stroke', 'none');
+          ellipse.setAttribute('stroke-width', '0');
+        }
         ellipse.addEventListener('click', (ev) => {
           ev.stopPropagation();
-          const i = this.notes.indexOf(entry);
-          if (i > -1) {
-            this.notes.splice(i, 1);
-            this.redraw();
-          }
+          this.setSelectedEntry(entry);
         });
         group.appendChild(ellipse);
+
+        const accidentalSymbol = entry.note.getAccidentalSymbol();
+        if (accidentalSymbol) {
+          const accidental = document.createElementNS('http://www.w3.org/2000/svg', 'text');
+          accidental.textContent = accidentalSymbol;
+          accidental.setAttribute('x', String(noteX - 14));
+          accidental.setAttribute('y', String(y));
+          accidental.setAttribute('font-size', '16');
+          accidental.setAttribute('font-family', 'serif');
+          accidental.setAttribute('dominant-baseline', 'middle');
+          accidental.setAttribute('text-anchor', 'middle');
+          accidental.addEventListener('click', (ev) => {
+            ev.stopPropagation();
+            this.setSelectedEntry(entry);
+          });
+          group.appendChild(accidental);
+        }
       });
 
-      const ys = entries.map((e) => e.y);
-      const firstY = ys[0];
-      const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
-      stem.setAttribute('stroke', 'black');
-      stem.setAttribute('stroke-width', '1');
-      if (firstY < middleY) {
-        stem.setAttribute('x1', String(x - 5));
-        stem.setAttribute('y1', String(Math.min(...ys)));
-        stem.setAttribute('x2', String(x - 5));
-        stem.setAttribute('y2', String(Math.max(...ys) + 35));
-      } else {
-        stem.setAttribute('x1', String(x + 5));
-        stem.setAttribute('y1', String(Math.max(...ys)));
-        stem.setAttribute('x2', String(x + 5));
-        stem.setAttribute('y2', String(Math.min(...ys) - 35));
+      if (sortedEntries.length > 0) {
+        const stem = document.createElementNS('http://www.w3.org/2000/svg', 'line');
+        stem.setAttribute('stroke', 'black');
+        stem.setAttribute('stroke-width', '1');
+        const topY = Math.min(...ys);
+        const bottomY = Math.max(...ys);
+        // Place the stem between noteheads when they are displaced
+        // on both sides (e.g., seconds). Otherwise keep outside.
+        const minX = Math.min(...noteXs);
+        const maxX = Math.max(...noteXs);
+        const stemX = hasSecond ? baseX : (stemDown ? minX - 5 : maxX + 5);
+        stem.setAttribute('x1', String(stemX));
+        stem.setAttribute('x2', String(stemX));
+        if (stemDown) {
+          stem.setAttribute('y1', String(topY));
+          stem.setAttribute('y2', String(bottomY + 35));
+        } else {
+          stem.setAttribute('y1', String(bottomY));
+          stem.setAttribute('y2', String(topY - 35));
+        }
+        group.appendChild(stem);
       }
-      group.appendChild(stem);
 
       this.svg.appendChild(group);
     });
   }
+
+  
 
   private drawStaff(): void {
     for (let i = 0; i < 5; i++) {
@@ -152,22 +359,17 @@ export class DrawService {
   }
 
   private getYForNote(note: Note): number {
-    const stepMap: Record<string, number> = {
-      'C': 0,
-      'D': 1,
-      'E': 2,
-      'F': 3,
-      'G': 4,
-      'A': 5,
-      'H': 6
-    };
-    const stepsFromC4 = stepMap[note.getLetter()] + (note.getOctave() - 4) * 7;
+    const stepsFromC4 = this.getStepsFromC4(note);
     // bottom line of the staff corresponds to E4 (2 steps above C4)
     return (
       this.staveTop +
       4 * this.lineSpacing -
       (stepsFromC4 - 2) * (this.lineSpacing / 2)
     );
+  }
+
+  private getStepsFromC4(note: Note): number {
+    return this.stepMap[note.getLetter()] + (note.getOctave() - 4) * 7;
   }
 
   private getNoteFromY(y: number): Note {
